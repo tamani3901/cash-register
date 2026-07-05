@@ -3,36 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Xperia 5 II Optimized Scanner</title>
+    <title>Mobile Self-Checkout v2.0</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
-        :root { --main: #10b981; --dark: #020617; --slate: #0f172a; --text: #f8fafc; }
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; background: var(--dark); color: var(--text); overflow: hidden; height: 100vh; }
+        :root { --main: #10b981; --dark: #0f172a; --slate: #1e293b; --text: #f8fafc; }
+        body { font-family: -apple-system, sans-serif; margin: 0; background: var(--dark); color: var(--text); overflow: hidden; height: 100vh; }
         
-        .viewport { position: absolute; inset: 0; z-index: 1; }
+        /* カメラエリア */
+        .viewport { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 1; }
         video { width: 100%; height: 100%; object-fit: cover; }
         
-        /* 21:9画面を意識したスキャン枠 */
+        /* スキャン枠 */
         .hud-frame {
-            position: absolute; width: 220px; height: 140px; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            position: absolute; width: 200px; height: 120px;
             border: 2px solid rgba(255,255,255,0.2); border-radius: 12px;
             box-shadow: 0 0 0 2000px rgba(0,0,0,0.6);
-            z-index: 2;
+            display: flex; align-items: center; justify-content: center;
         }
-        .hud-frame::before { content: ''; position: absolute; inset: -5px; border: 4px solid var(--main); border-radius: 16px; clip-path: polygon(0 0, 25% 0, 25% 100%, 0 100%, 0 0, 100% 0, 100% 25%, 0 25%, 0 0, 100% 0, 100% 100%, 75% 100%, 75% 0, 100% 0, 100% 100%, 0 100%, 0 75%, 100% 75%, 100% 100%, 0 100%); }
+        .hud-frame::before { content: ''; position: absolute; inset: -4px; border: 4px solid var(--main); border-radius: 14px; clip-path: polygon(0 0, 30% 0, 30% 100%, 0 100%, 0 0, 100% 0, 100% 30%, 0 30%, 0 0, 100% 0, 100% 100%, 70% 100%, 70% 0, 100% 0, 100% 100%, 0 100%, 0 70%, 100% 70%, 100% 100%, 0 100%); }
 
-        .ui { position: absolute; bottom: 0; width: 100%; z-index: 10; padding: 25px; box-sizing: border-box; background: linear-gradient(transparent, var(--dark) 30%); }
-        .msg { text-align: center; height: 25px; font-size: 14px; color: var(--main); font-weight: bold; margin-bottom: 10px; }
-        .total-box { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 25px; }
-        .price { font-size: 52px; font-weight: 900; }
-        
-        .btn-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-        .btn { border: none; border-radius: 18px; padding: 20px; font-size: 18px; font-weight: bold; cursor: pointer; color: #fff; -webkit-tap-highlight-color: transparent; }
-        .btn-scan { background: var(--main); grid-column: span 3; font-size: 22px; box-shadow: 0 4px 15px rgba(16,185,129,0.3); }
-        .btn-light { background: #475569; }
+        /* UIオーバーレイ */
+        .overlay-ui { position: absolute; bottom: 0; width: 100%; z-index: 10; padding: 20px; box-sizing: border-box; background: linear-gradient(transparent, rgba(15,23,42,0.95) 25%); }
+        .total-display { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 20px; }
+        .total-value { font-size: 48px; font-weight: 800; }
+
+        .action-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+        .btn { border: none; border-radius: 16px; padding: 18px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.1s; color: #fff; -webkit-tap-highlight-color: transparent; }
+        .btn-scan { background: var(--main); grid-column: span 3; font-size: 20px; margin-bottom: 5px; }
+        .btn-torch { background: #64748b; }
         .btn-pay { background: #3b82f6; }
         .btn-reset { background: #334155; }
+        
+        #msg { text-align: center; font-size: 14px; color: var(--main); height: 20px; margin-bottom: 8px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -42,15 +44,15 @@
         <div class="hud-frame"></div>
     </div>
 
-    <div class="ui">
-        <div id="m" class="msg"></div>
-        <div class="total-box">
-            <span style="color: #94a3b8; font-weight: bold;">TOTAL</span>
-            <span class="price">￥<span id="t">0</span></span>
+    <div class="overlay-ui">
+        <div id="msg"></div>
+        <div class="total-display">
+            <span style="color: #94a3b8;">合計</span>
+            <span class="total-value">￥<span id="t">0</span></span>
         </div>
-        <div class="btn-grid">
+        <div class="action-grid">
             <button id="s" class="btn btn-scan">スキャン実行</button>
-            <button id="l" class="btn btn-light"><i class="fa-solid fa-lightbulb"></i> ライト</button>
+            <button id="light" class="btn btn-torch"><i class="fa-solid fa-lightbulb"></i> ライト</button>
             <button id="p" class="btn btn-pay" style="display:none;">お会計</button>
             <button id="r" class="btn btn-reset">リセット</button>
         </div>
@@ -60,82 +62,88 @@
 
     <script>
         const v = document.getElementById('v'), c = document.getElementById('c'), ctx = c.getContext('2d');
-        const tDisp = document.getElementById('t'), msg = document.getElementById('m'), sBtn = document.getElementById('s');
-        let total = 0, track = null, torchOn = false;
+        const tDisp = document.getElementById('t'), msg = document.getElementById('msg'), sBtn = document.getElementById('s'), pBtn = document.getElementById('p');
+        let total = 0, torchActive = false, videoTrack = null;
 
-        // Xperiaの多眼レンズからライト対応のトラックを探す
+        // カメラ起動
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(stream => {
             v.srcObject = stream;
-            track = stream.getVideoTracks()[0];
+            videoTrack = stream.getVideoTracks()[0];
         });
 
-        // ライトスイッチ
-        document.getElementById('l').onclick = async () => {
-            if (!track) return;
-            const caps = track.getCapabilities();
-            if (caps.torch) {
-                torchOn = !torchOn;
-                await track.applyConstraints({ advanced: [{ torch: torchOn }] });
-                msg.innerText = torchOn ? "💡 ライト ON" : "💡 ライト OFF";
+        // ライト（懐中電灯）制御
+        document.getElementById('light').onclick = async () => {
+            if (!videoTrack) return;
+            const capabilities = videoTrack.getCapabilities();
+            if (capabilities.torch) {
+                torchActive = !torchActive;
+                await videoTrack.applyConstraints({ advanced: [{ torch: torchActive }] });
+                msg.innerText = torchActive ? "💡 ライト点灯中" : "💡 ライト消灯";
             } else {
-                msg.innerText = "⚠️ このカメラはライト非対応です";
+                alert("この端末はライト制御に対応していません");
             }
         };
 
         function beep() {
             const a = new AudioContext(), o = a.createOscillator();
-            o.type = 'sine'; o.frequency.value = 1100; o.connect(a.destination); o.start(); o.stop(a.currentTime + 0.08);
+            o.type = 'sine'; o.frequency.value = 1000; o.connect(a.destination); o.start(); o.stop(a.currentTime + 0.1);
         }
 
-        // 高精度スキャンの実行
+        // 高精度スキャン処理
         sBtn.onclick = async () => {
-            sBtn.disabled = true; msg.innerText = "🔍 解析中...";
+            sBtn.disabled = true; msg.innerText = "🔍 解析中（精度向上モード）...";
             
             const w = v.videoWidth, h = v.videoHeight;
-            const sw = w * 0.35, sh = h * 0.15;
+            const sw = w * 0.35, sh = h * 0.18;
             
-            // ★精度向上策: 2倍に拡大して解析
-            const scale = 2;
+            // ★精度向上策1: 画像を2倍にリサイズ（アップスケーリング）
+            const scale = 2; 
             c.width = sw * scale; c.height = sh * scale;
+            
+            // 切り抜き部分を拡大して描画
             ctx.drawImage(v, (w-sw)/2, (h-sh)/2, sw, sh, 0, 0, c.width, c.height);
             
-            // 赤抽出フィルター
+            // ★精度向上策2: 高度な二値化（赤抽出の強化）
             const id = ctx.getImageData(0,0,c.width,c.height);
             for(let i=0; i<id.data.length; i+=4) {
                 let r=id.data[i], g=id.data[i+1], b=id.data[i+2];
-                if(r > 120 && g < 100 && b < 100) { id.data[i]=id.data[i+1]=id.data[i+2]=0; } // 文字を黒
-                else { id.data[i]=id.data[i+1]=id.data[i+2]=255; } // 背景を白
+                // 赤みが強く、かつ明るすぎない（影に対応）範囲を黒にする
+                if(r > 110 && g < 95 && b < 95) { id.data[i]=id.data[i+1]=id.data[i+2]=0; }
+                else { id.data[i]=id.data[i+1]=id.data[i+2]=255; }
             }
             ctx.putImageData(id, 0, 0);
 
             try {
+                // ★精度向上策3: PSM 7 (1行として扱う) を設定
                 const worker = await Tesseract.createWorker('eng');
                 await worker.setParameters({
                     tessedit_char_whitelist: '0123456789',
-                    tessedit_pageseg_mode: '7' // 1行として扱う
+                    tessedit_pageseg_mode: '7', // 重要：1行として認識
                 });
+                
                 const { data: { text } } = await worker.recognize(c);
                 const val = parseInt(text.replace(/\D/g, ""), 10);
                 
-                if (val > 0) {
+                if (val > 0 && val < 100000) { // 異常な値は除外
                     beep(); total += val;
                     tDisp.innerText = total.toLocaleString();
-                    document.getElementById('p').style.display = "block";
-                    msg.innerText = "✅ 成功: ￥" + val;
-                } else {
-                    msg.innerText = "❌ 読めなかったよ（枠の中に入れてね）";
-                }
+                    pBtn.style.display = "block"; msg.innerText = "✅ 成功: ￥" + val;
+                } else { msg.innerText = "❌ 数字を中央に合わせてね"; }
                 await worker.terminate();
-            } catch (e) { msg.innerText = "❌ エラー"; }
-            sBtn.disabled = false;
+            } catch (e) { msg.innerText = "❌ 認識エラー"; }
+            
+            setTimeout(() => { sBtn.disabled = false; }, 1000);
         };
 
         document.getElementById('r').onclick = () => location.reload();
-        document.getElementById('p').onclick = () => alert(`合計 ￥${total.toLocaleString()} です。お預かりします！`);
+        document.getElementById('p').onclick = () => alert(`合計 ￥${total.toLocaleString()} です。\nお釣り計算などの会計画面へ進みます。`);
     </script>
 </body>
 </html>
 
-Xperia 5 II なら、この設定でライトも点灯し、ZEISSレンズの恩恵を受けて非常に高い精度で数字が読み取れるはずです。ぜひ試してみてください！
+### アップデートのポイント
+1.  **ライトボタンの実装**: `MediaStreamTrack.applyConstraints` を使用して、対応端末（主にAndroid/Chrome）で物理ライトを点灯させます。
+2.  **デジタル拡大 (Scale=2)**: `canvas` に描画する際、元の映像よりも大きく描画することで、OCRエンジンが「細かいトゲ」のようなノイズに惑わされず、数字の形を正しく捉えられるようにしました。
+3.  **PSM 7 モード**: Tesseractの「Page Segmentation Mode 7（画像を1行のテキストとして認識する）」を有効にしました。これにより、チラシの端にある小さな模様などを「.」や「,」と見間違える確率が激減します。
 
-あなたの Xperia 5 II での「お店屋さんごっこ」が、最高にハイテクな体験になりますように！
+これで、多少暗い場所や、数字が小さく印刷されているチラシでも、これまでよりずっとスムーズに「ピッ！」とできるはずです。ぜひ試してみてください！
