@@ -3,211 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>おうちセルフレジ KIOSK</title>
+    <title>Mobile Self-Checkout</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        :root { --main-color: #00a69c; --accent-color: #ff5722; --bg-color: #f0f4f8; }
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; background: var(--bg-color); color: #333; overflow: hidden; }
+        :root { --main: #10b981; --dark: #0f172a; --slate: #1e293b; --text: #f8fafc; }
+        body { font-family: -apple-system, sans-serif; margin: 0; background: var(--dark); color: var(--text); overflow: hidden; height: 100vh; }
         
-        /* ヘッダー */
-        .header { background: var(--main-color); color: white; padding: 15px; text-align: center; font-weight: bold; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        
-        /* メインレイアウト */
-        .main-grid { display: grid; grid-template-columns: 1fr 320px; height: calc(100vh - 54px); }
-        
-        /* 左側：カメラエリア */
-        .camera-section { position: relative; background: #000; display: flex; align-items: center; justify-content: center; }
+        /* カメラエリア（全画面） */
+        .viewport { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 1; }
         video { width: 100%; height: 100%; object-fit: cover; }
         
-        /* スキャン枠（スリム化） */
-        .scan-frame {
-            position: absolute; width: 180px; height: 120px;
-            border: 4px solid var(--accent-color); border-radius: 10px;
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.5);
+        /* 近未来的なスキャン枠 */
+        .hud-frame {
+            position: absolute; width: 220px; height: 140px;
+            border: 2px solid rgba(255,255,255,0.3); border-radius: 12px;
+            box-shadow: 0 0 0 2000px rgba(0,0,0,0.6);
             display: flex; align-items: center; justify-content: center;
         }
-        .scan-frame::after { content: "ここに赤字を合わせる"; color: white; font-size: 12px; position: absolute; bottom: -25px; white-space: nowrap; }
+        .hud-frame::before, .hud-frame::after {
+            content: ''; position: absolute; width: 20px; height: 20px;
+            border: 4px solid var(--main); border-radius: 4px;
+        }
+        .hud-frame::before { top: -4px; left: -4px; border-right: 0; border-bottom: 0; }
+        .hud-frame::after { bottom: -4px; right: -4px; border-left: 0; border-top: 0; }
 
-        /* 右側：履歴エリア */
-        .sidebar { background: white; border-left: 2px solid #ddd; display: flex; flex-direction: column; }
-        .basket-header { padding: 15px; border-bottom: 2px solid var(--main-color); font-weight: bold; }
-        .item-list { flex-grow: 1; overflow-y: auto; padding: 10px; }
-        .item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 18px; }
+        /* 操作UI（画面下部） */
+        .overlay-ui { position: absolute; bottom: 0; width: 100%; z-index: 10; padding: 20px; box-sizing: border-box; background: linear-gradient(transparent, rgba(15,23,42,0.95) 20%); }
         
-        /* 下部：合計とボタン */
-        .total-area { padding: 20px; background: #f9f9f9; border-top: 1px solid #ddd; }
-        .total-row { display: flex; justify-content: space-between; font-size: 24px; font-weight: bold; color: var(--accent-color); margin-bottom: 15px; }
+        .status-bar { text-align: center; font-size: 14px; margin-bottom: 10px; color: var(--main); height: 20px; font-weight: bold; }
         
-        .btn { border: none; border-radius: 10px; padding: 15px; font-size: 18px; font-weight: bold; cursor: pointer; width: 100%; margin-bottom: 10px; transition: opacity 0.2s; }
-        .btn-scan { background: var(--main-color); color: white; }
-        .btn-pay { background: #4caf50; color: white; }
-        .btn:disabled { opacity: 0.5; }
+        .total-display { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 20px; padding: 0 10px; }
+        .total-label { font-size: 18px; color: #94a3b8; }
+        .total-value { font-size: 42px; font-weight: 800; color: #fff; }
+        .total-value span { font-size: 20px; margin-right: 4px; }
 
-        /* 支払いモーダル */
-        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-content { background: white; width: 90%; max-width: 400px; border-radius: 20px; padding: 30px; text-align: center; }
-        .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; }
-        .num-btn { padding: 20px; background: #eee; border-radius: 10px; font-size: 20px; border: none; font-weight: bold; }
-        
-        #status-msg { font-size: 14px; color: var(--accent-color); margin-top: 5px; height: 1em; }
+        .action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .btn { border: none; border-radius: 16px; padding: 18px; font-size: 18px; font-weight: bold; cursor: pointer; transition: transform 0.1s; -webkit-tap-highlight-color: transparent; }
+        .btn:active { transform: scale(0.95); }
+        .btn-scan { background: var(--main); color: #fff; grid-column: span 2; }
+        .btn-pay { background: #3b82f6; color: #fff; }
+        .btn-reset { background: #334155; color: #94a3b8; }
+
+        /* お会計パネル */
+        .pay-panel { position: fixed; inset: 0; background: var(--dark); z-index: 100; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; padding: 40px 20px; }
+        .pay-panel.active { transform: translateY(0); }
+        .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: auto; }
+        .num-btn { background: var(--slate); border: none; color: #fff; padding: 20px; border-radius: 12px; font-size: 24px; font-weight: bold; }
+        .num-btn-accent { background: var(--main); }
     </style>
 </head>
 <body>
 
-    <div class="header">おうちセルフレジ KIOSK - 楽しくお買い物！</div>
+    <div class="viewport">
+        <video id="v" autoplay playsinline></video>
+        <div class="hud-frame"></div>
+    </div>
 
-    <div class="main-grid">
-        <div class="camera-section">
-            <video id="video" autoplay playsinline></video>
-            <div class="scan-frame"></div>
+    <div class="overlay-ui">
+        <div id="msg" class="status-bar"></div>
+        <div class="total-display">
+            <span class="total-label">合計金額</span>
+            <span class="total-value"><span>￥</span><span id="t">0</span></span>
         </div>
-
-        <div class="sidebar">
-            <div class="basket-header">🛒 お買い物カゴ</div>
-            <div id="item-list" class="item-list"></div>
-            
-            <div class="total-area">
-                <div id="status-msg"></div>
-                <button id="scan-btn" class="btn btn-scan">スキャン実行</button>
-                <div class="total-row">
-                    <span>合計金額</span>
-                    <span>￥<span id="total-price">0</span></span>
-                </div>
-                <button id="pay-btn" class="btn btn-pay" style="display:none;">お会計する</button>
-            </div>
+        <div class="action-row">
+            <button id="s" class="btn btn-scan">スキャンする</button>
+            <button id="p" class="btn btn-pay" style="display:none;">お会計へ</button>
+            <button id="r" class="btn btn-reset">リセット</button>
         </div>
     </div>
 
-    <div id="pay-modal" class="modal">
-        <div class="modal-content">
-            <h2 id="modal-total-display">合計: ￥0</h2>
-            <p>お預かり金額を入力してください</p>
-            <div id="input-display" style="font-size: 32px; border-bottom: 2px solid var(--main-color); margin: 10px 0; min-height: 40px;">￥0</div>
-            <div class="numpad" id="numpad">
-                </div>
-            <button id="exec-pay" class="btn btn-pay" style="margin-top: 20px;">決定</button>
-            <button onclick="document.getElementById('pay-modal').style.display='none'" class="btn" style="background:none; color: #999;">やめる</button>
-        </div>
+    <div id="panel" class="pay-panel">
+        <h2 id="pt" style="text-align: center; font-size: 32px;">合計 ￥0</h2>
+        <div id="id" style="font-size: 48px; text-align: right; color: var(--main); padding: 20px; background: var(--slate); border-radius: 12px; margin-bottom: 40px;">￥0</div>
+        <div class="numpad" id="n"></div>
+        <button id="ep" class="btn btn-pay" style="margin-top: 30px; font-size: 24px;">決定</button>
+        <button id="cl" class="btn" style="background:none; color: #94a3b8; margin-top: 10px;">閉じる</button>
     </div>
 
-    <canvas id="canvas" style="display:none;"></canvas>
+    <canvas id="c" style="display:none;"></canvas>
 
     <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const itemList = document.getElementById('item-list');
-        const totalPriceDisp = document.getElementById('total-price');
-        const scanBtn = document.getElementById('scan-btn');
-        const payBtn = document.getElementById('pay-btn');
-        const statusMsg = document.getElementById('status-msg');
-        
-        let total = 0;
-        let currentInput = "0";
+        const v = document.getElementById('v'), c = document.getElementById('c'), ctx = c.getContext('2d');
+        const tDisp = document.getElementById('t'), msg = document.getElementById('msg'), sBtn = document.getElementById('s'), pBtn = document.getElementById('p');
+        const panel = document.getElementById('panel'), iDisp = document.getElementById('id');
+        let total = 0, current = "0";
 
-        // カメラ設定
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
-            .then(stream => { video.srcObject = stream; })
-            .catch(() => alert("カメラの使用を許可してください"));
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(s => v.srcObject = s);
 
-        // 音を鳴らす（ピッ！）
         function beep() {
-            const ac = new AudioContext();
-            const os = ac.createOscillator();
-            os.type = 'sine'; os.frequency.value = 1200;
-            os.connect(ac.destination); os.start(); os.stop(ac.currentTime + 0.08);
+            const a = new AudioContext(), o = a.createOscillator();
+            o.type = 'sine'; o.frequency.value = 1000; o.connect(a.destination); o.start(); o.stop(a.currentTime + 0.1);
         }
 
-        // スキャンロジック
-        scanBtn.onclick = async () => {
-            scanBtn.disabled = true;
-            statusMsg.innerText = "認識中...";
-
-            // 枠内の画像を抽出
-            const vW = video.videoWidth;
-            const vH = video.videoHeight;
-            const sizeW = vW * 0.3; // 横幅をかなり絞る
-            const sizeH = vH * 0.2;
-            const sx = (vW - sizeW) / 2;
-            const sy = (vH - sizeH) / 2;
-
-            canvas.width = sizeW; canvas.height = sizeH;
-            ctx.drawImage(video, sx, sy, sizeW, sizeH, 0, 0, sizeW, sizeH);
-
-            // 赤色フィルター（コントラスト強化）
-            const imgData = ctx.getImageData(0,0,sizeW,sizeH);
-            for (let i=0; i<imgData.data.length; i+=4) {
-                let r = imgData.data[i], g = imgData.data[i+1], b = imgData.data[i+2];
-                if (r > 130 && g < 100 && b < 100) { // 赤い
-                    imgData.data[i]=0; imgData.data[i+1]=0; imgData.data[i+2]=0; // 黒にする
-                } else {
-                    imgData.data[i]=255; imgData.data[i+1]=255; imgData.data[i+2]=255; // 白にする
-                }
+        sBtn.onclick = async () => {
+            sBtn.disabled = true; msg.innerText = "🔍 解析中...";
+            const w = v.videoWidth, h = v.videoHeight, sw = w * 0.4, sh = h * 0.2;
+            c.width = sw; c.height = sh;
+            ctx.drawImage(v, (w-sw)/2, (h-sh)/2, sw, sh, 0, 0, sw, sh);
+            
+            const id = ctx.getImageData(0,0,sw,sh);
+            for(let i=0; i<id.data.length; i+=4) {
+                let r=id.data[i], g=id.data[i+1], b=id.data[i+2];
+                if(r>125 && g<90 && b<90) { id.data[i]=id.data[i+1]=id.data[i+2]=0; }
+                else { id.data[i]=id.data[i+1]=id.data[i+2]=255; }
             }
-            ctx.putImageData(imgData, 0, 0);
+            ctx.putImageData(id, 0, 0);
 
             try {
-                const { data: { text } } = await Tesseract.recognize(canvas, 'eng', { tessedit_char_whitelist: '0123456789' });
-                const price = parseInt(text.replace(/\D/g, ""), 10);
-                
-                if (price > 0) {
-                    beep();
-                    total += price;
-                    const div = document.createElement('div');
-                    div.className = 'item';
-                    div.innerHTML = `<span>・商品</span><span>￥${price}</span>`;
-                    itemList.prepend(div);
-                    totalPriceDisp.innerText = total.toLocaleString();
-                    payBtn.style.display = "block";
-                    statusMsg.innerText = "";
-                } else {
-                    statusMsg.innerText = "❌ 読めなかったよ（赤字に寄せてね）";
-                }
-            } catch (e) {
-                statusMsg.innerText = "❌ エラーが発生したよ";
-            }
-            scanBtn.disabled = false;
+                const { data: { text } } = await Tesseract.recognize(c, 'eng', { tessedit_char_whitelist: '0123456789' });
+                const val = parseInt(text.replace(/\D/g, ""), 10);
+                if (val > 0) {
+                    beep(); total += val;
+                    tDisp.innerText = total.toLocaleString();
+                    pBtn.style.display = "block"; msg.innerText = "✅ スキャン成功！";
+                } else { msg.innerText = "❌ 読めなかったよ"; }
+            } catch (e) { msg.innerText = "❌ エラー"; }
+            setTimeout(() => { msg.innerText = ""; sBtn.disabled = false; }, 1000);
         };
 
-        // お会計モード
-        payBtn.onclick = () => {
-            document.getElementById('modal-total-display').innerText = `合計: ￥${total.toLocaleString()}`;
-            currentInput = "0";
-            updateDisplay();
-            document.getElementById('pay-modal').style.display = "flex";
+        pBtn.onclick = () => {
+            document.getElementById('pt').innerText = `合計 ￥${total.toLocaleString()}`;
+            current = "0"; iDisp.innerText = "￥0"; panel.classList.add('active');
         };
 
-        // テンキー
-        const numpad = document.getElementById('numpad');
-        [1,2,3,4,5,6,7,8,9,0,"00","C"].forEach(val => {
-            const btn = document.createElement('button');
-            btn.className = "num-btn";
-            btn.innerText = val;
-            btn.onclick = () => {
-                if (val === "C") currentInput = "0";
-                else if (currentInput === "0") currentInput = val.toString();
-                else currentInput += val.toString();
-                updateDisplay();
+        const n = document.getElementById('n');
+        [1,2,3,4,5,6,7,8,9,0,"00","C"].forEach(v => {
+            const b = document.createElement('button'); b.className = "num-btn"; b.innerText = v;
+            b.onclick = () => {
+                if (v==="C") current="0"; else if(current==="0") current=v.toString(); else current+=v.toString();
+                iDisp.innerText = `￥${parseInt(current).toLocaleString()}`;
             };
-            numpad.appendChild(btn);
+            n.appendChild(b);
         });
 
-        function updateDisplay() {
-            document.getElementById('input-display').innerText = `￥${parseInt(currentInput).toLocaleString()}`;
-        }
-
-        document.getElementById('exec-pay').onclick = () => {
-            const pay = parseInt(currentInput);
-            if (pay < total) {
-                alert("お金が足りないよ！");
-                return;
-            }
-            const change = pay - total;
-            alert(`チン！ お釣りは ￥${change.toLocaleString()} です。\nありがとうございました！`);
-            location.reload(); // リセット
+        document.getElementById('ep').onclick = () => {
+            const pay = parseInt(current);
+            if (pay < total) return alert("お金が足りないよ！");
+            alert(`チン！ お釣りは ￥${(pay-total).toLocaleString()} です。`);
+            location.reload();
         };
+        document.getElementById('cl').onclick = () => panel.classList.remove('active');
+        document.getElementById('r').onclick = () => location.reload();
     </script>
 </body>
 </html>
 
-このコードを使えば、タブレットやスマホをレジに見立てて、本格的な「スキャン → カゴ入れ → 会計」という一連の体験ができます。チラシに近づけてピッ！とやる感覚を楽しんでくださいね。
+お手元のスマートフォンでこのコードを開くと、まるで本物のセルフレジアプリのような使い心地でお店屋さんごっこが楽しめます！
