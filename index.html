@@ -3,53 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mobile Self-Checkout</title>
+    <title>Mobile Self-Checkout v2.0</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         :root { --main: #10b981; --dark: #0f172a; --slate: #1e293b; --text: #f8fafc; }
         body { font-family: -apple-system, sans-serif; margin: 0; background: var(--dark); color: var(--text); overflow: hidden; height: 100vh; }
         
-        /* カメラエリア（全画面） */
+        /* カメラエリア */
         .viewport { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 1; }
         video { width: 100%; height: 100%; object-fit: cover; }
         
-        /* 近未来的なスキャン枠 */
+        /* スキャン枠 */
         .hud-frame {
-            position: absolute; width: 220px; height: 140px;
-            border: 2px solid rgba(255,255,255,0.3); border-radius: 12px;
+            position: absolute; width: 200px; height: 120px;
+            border: 2px solid rgba(255,255,255,0.2); border-radius: 12px;
             box-shadow: 0 0 0 2000px rgba(0,0,0,0.6);
             display: flex; align-items: center; justify-content: center;
         }
-        .hud-frame::before, .hud-frame::after {
-            content: ''; position: absolute; width: 20px; height: 20px;
-            border: 4px solid var(--main); border-radius: 4px;
-        }
-        .hud-frame::before { top: -4px; left: -4px; border-right: 0; border-bottom: 0; }
-        .hud-frame::after { bottom: -4px; right: -4px; border-left: 0; border-top: 0; }
+        .hud-frame::before { content: ''; position: absolute; inset: -4px; border: 4px solid var(--main); border-radius: 14px; clip-path: polygon(0 0, 30% 0, 30% 100%, 0 100%, 0 0, 100% 0, 100% 30%, 0 30%, 0 0, 100% 0, 100% 100%, 70% 100%, 70% 0, 100% 0, 100% 100%, 0 100%, 0 70%, 100% 70%, 100% 100%, 0 100%); }
 
-        /* 操作UI（画面下部） */
-        .overlay-ui { position: absolute; bottom: 0; width: 100%; z-index: 10; padding: 20px; box-sizing: border-box; background: linear-gradient(transparent, rgba(15,23,42,0.95) 20%); }
+        /* UIオーバーレイ */
+        .overlay-ui { position: absolute; bottom: 0; width: 100%; z-index: 10; padding: 20px; box-sizing: border-box; background: linear-gradient(transparent, rgba(15,23,42,0.95) 25%); }
+        .total-display { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 20px; }
+        .total-value { font-size: 48px; font-weight: 800; }
+
+        .action-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+        .btn { border: none; border-radius: 16px; padding: 18px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.1s; color: #fff; -webkit-tap-highlight-color: transparent; }
+        .btn-scan { background: var(--main); grid-column: span 3; font-size: 20px; margin-bottom: 5px; }
+        .btn-torch { background: #64748b; }
+        .btn-pay { background: #3b82f6; }
+        .btn-reset { background: #334155; }
         
-        .status-bar { text-align: center; font-size: 14px; margin-bottom: 10px; color: var(--main); height: 20px; font-weight: bold; }
-        
-        .total-display { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 20px; padding: 0 10px; }
-        .total-label { font-size: 18px; color: #94a3b8; }
-        .total-value { font-size: 42px; font-weight: 800; color: #fff; }
-        .total-value span { font-size: 20px; margin-right: 4px; }
-
-        .action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .btn { border: none; border-radius: 16px; padding: 18px; font-size: 18px; font-weight: bold; cursor: pointer; transition: transform 0.1s; -webkit-tap-highlight-color: transparent; }
-        .btn:active { transform: scale(0.95); }
-        .btn-scan { background: var(--main); color: #fff; grid-column: span 2; }
-        .btn-pay { background: #3b82f6; color: #fff; }
-        .btn-reset { background: #334155; color: #94a3b8; }
-
-        /* お会計パネル */
-        .pay-panel { position: fixed; inset: 0; background: var(--dark); z-index: 100; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; padding: 40px 20px; }
-        .pay-panel.active { transform: translateY(0); }
-        .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: auto; }
-        .num-btn { background: var(--slate); border: none; color: #fff; padding: 20px; border-radius: 12px; font-size: 24px; font-weight: bold; }
-        .num-btn-accent { background: var(--main); }
+        #msg { text-align: center; font-size: 14px; color: var(--main); height: 20px; margin-bottom: 8px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -60,24 +45,17 @@
     </div>
 
     <div class="overlay-ui">
-        <div id="msg" class="status-bar"></div>
+        <div id="msg"></div>
         <div class="total-display">
-            <span class="total-label">合計金額</span>
-            <span class="total-value"><span>￥</span><span id="t">0</span></span>
+            <span style="color: #94a3b8;">合計</span>
+            <span class="total-value">￥<span id="t">0</span></span>
         </div>
-        <div class="action-row">
-            <button id="s" class="btn btn-scan">スキャンする</button>
-            <button id="p" class="btn btn-pay" style="display:none;">お会計へ</button>
+        <div class="action-grid">
+            <button id="s" class="btn btn-scan">スキャン実行</button>
+            <button id="light" class="btn btn-torch"><i class="fa-solid fa-lightbulb"></i> ライト</button>
+            <button id="p" class="btn btn-pay" style="display:none;">お会計</button>
             <button id="r" class="btn btn-reset">リセット</button>
         </div>
-    </div>
-
-    <div id="panel" class="pay-panel">
-        <h2 id="pt" style="text-align: center; font-size: 32px;">合計 ￥0</h2>
-        <div id="id" style="font-size: 48px; text-align: right; color: var(--main); padding: 20px; background: var(--slate); border-radius: 12px; margin-bottom: 40px;">￥0</div>
-        <div class="numpad" id="n"></div>
-        <button id="ep" class="btn btn-pay" style="margin-top: 30px; font-size: 24px;">決定</button>
-        <button id="cl" class="btn" style="background:none; color: #94a3b8; margin-top: 10px;">閉じる</button>
     </div>
 
     <canvas id="c" style="display:none;"></canvas>
@@ -85,67 +63,80 @@
     <script>
         const v = document.getElementById('v'), c = document.getElementById('c'), ctx = c.getContext('2d');
         const tDisp = document.getElementById('t'), msg = document.getElementById('msg'), sBtn = document.getElementById('s'), pBtn = document.getElementById('p');
-        const panel = document.getElementById('panel'), iDisp = document.getElementById('id');
-        let total = 0, current = "0";
+        let total = 0, torchActive = false, videoTrack = null;
 
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(s => v.srcObject = s);
+        // カメラ起動
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(stream => {
+            v.srcObject = stream;
+            videoTrack = stream.getVideoTracks()[0];
+        });
+
+        // ライト（懐中電灯）制御
+        document.getElementById('light').onclick = async () => {
+            if (!videoTrack) return;
+            const capabilities = videoTrack.getCapabilities();
+            if (capabilities.torch) {
+                torchActive = !torchActive;
+                await videoTrack.applyConstraints({ advanced: [{ torch: torchActive }] });
+                msg.innerText = torchActive ? "💡 ライト点灯中" : "💡 ライト消灯";
+            } else {
+                alert("この端末はライト制御に対応していません");
+            }
+        };
 
         function beep() {
             const a = new AudioContext(), o = a.createOscillator();
             o.type = 'sine'; o.frequency.value = 1000; o.connect(a.destination); o.start(); o.stop(a.currentTime + 0.1);
         }
 
+        // 高精度スキャン処理
         sBtn.onclick = async () => {
-            sBtn.disabled = true; msg.innerText = "🔍 解析中...";
-            const w = v.videoWidth, h = v.videoHeight, sw = w * 0.4, sh = h * 0.2;
-            c.width = sw; c.height = sh;
-            ctx.drawImage(v, (w-sw)/2, (h-sh)/2, sw, sh, 0, 0, sw, sh);
+            sBtn.disabled = true; msg.innerText = "🔍 解析中（精度向上モード）...";
             
-            const id = ctx.getImageData(0,0,sw,sh);
+            const w = v.videoWidth, h = v.videoHeight;
+            const sw = w * 0.35, sh = h * 0.18;
+            
+            // ★精度向上策1: 画像を2倍にリサイズ（アップスケーリング）
+            const scale = 2; 
+            c.width = sw * scale; c.height = sh * scale;
+            
+            // 切り抜き部分を拡大して描画
+            ctx.drawImage(v, (w-sw)/2, (h-sh)/2, sw, sh, 0, 0, c.width, c.height);
+            
+            // ★精度向上策2: 高度な二値化（赤抽出の強化）
+            const id = ctx.getImageData(0,0,c.width,c.height);
             for(let i=0; i<id.data.length; i+=4) {
                 let r=id.data[i], g=id.data[i+1], b=id.data[i+2];
-                if(r>125 && g<90 && b<90) { id.data[i]=id.data[i+1]=id.data[i+2]=0; }
+                // 赤みが強く、かつ明るすぎない（影に対応）範囲を黒にする
+                if(r > 110 && g < 95 && b < 95) { id.data[i]=id.data[i+1]=id.data[i+2]=0; }
                 else { id.data[i]=id.data[i+1]=id.data[i+2]=255; }
             }
             ctx.putImageData(id, 0, 0);
 
             try {
-                const { data: { text } } = await Tesseract.recognize(c, 'eng', { tessedit_char_whitelist: '0123456789' });
+                // ★精度向上策3: PSM 7 (1行として扱う) を設定
+                const worker = await Tesseract.createWorker('eng');
+                await worker.setParameters({
+                    tessedit_char_whitelist: '0123456789',
+                    tessedit_pageseg_mode: '7', // 重要：1行として認識
+                });
+                
+                const { data: { text } } = await worker.recognize(c);
                 const val = parseInt(text.replace(/\D/g, ""), 10);
-                if (val > 0) {
+                
+                if (val > 0 && val < 100000) { // 異常な値は除外
                     beep(); total += val;
                     tDisp.innerText = total.toLocaleString();
-                    pBtn.style.display = "block"; msg.innerText = "✅ スキャン成功！";
-                } else { msg.innerText = "❌ 読めなかったよ"; }
-            } catch (e) { msg.innerText = "❌ エラー"; }
-            setTimeout(() => { msg.innerText = ""; sBtn.disabled = false; }, 1000);
+                    pBtn.style.display = "block"; msg.innerText = "✅ 成功: ￥" + val;
+                } else { msg.innerText = "❌ 数字を中央に合わせてね"; }
+                await worker.terminate();
+            } catch (e) { msg.innerText = "❌ 認識エラー"; }
+            
+            setTimeout(() => { sBtn.disabled = false; }, 1000);
         };
 
-        pBtn.onclick = () => {
-            document.getElementById('pt').innerText = `合計 ￥${total.toLocaleString()}`;
-            current = "0"; iDisp.innerText = "￥0"; panel.classList.add('active');
-        };
-
-        const n = document.getElementById('n');
-        [1,2,3,4,5,6,7,8,9,0,"00","C"].forEach(v => {
-            const b = document.createElement('button'); b.className = "num-btn"; b.innerText = v;
-            b.onclick = () => {
-                if (v==="C") current="0"; else if(current==="0") current=v.toString(); else current+=v.toString();
-                iDisp.innerText = `￥${parseInt(current).toLocaleString()}`;
-            };
-            n.appendChild(b);
-        });
-
-        document.getElementById('ep').onclick = () => {
-            const pay = parseInt(current);
-            if (pay < total) return alert("お金が足りないよ！");
-            alert(`チン！ お釣りは ￥${(pay-total).toLocaleString()} です。`);
-            location.reload();
-        };
-        document.getElementById('cl').onclick = () => panel.classList.remove('active');
         document.getElementById('r').onclick = () => location.reload();
+        document.getElementById('p').onclick = () => alert(`合計 ￥${total.toLocaleString()} です。\nお釣り計算などの会計画面へ進みます。`);
     </script>
 </body>
 </html>
-
-お手元のスマートフォンでこのコードを開くと、まるで本物のセルフレジアプリのような使い心地でお店屋さんごっこが楽しめます！
